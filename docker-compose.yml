@@ -1,0 +1,66 @@
+version: '3'
+
+services:
+
+  mongo_canes:
+    image: mongo
+    container_name: mongo_db_container
+    ports: 
+      - 27017:27017
+
+  tweets_collector_canes:
+    build: tweets_collector
+    container_name: tweets_collector_container
+    volumes:
+      - ./tweets_collector:/app
+    depends_on:
+      - mongo_canes
+    environment:
+      TWITTER_BEARER_TOKEN: ${TWITTER_BEARER_TOKEN}
+      TWITTER_SOURCE_IS_STREAM: ${TWITTER_SOURCE_IS_STREAM}
+      COLLECTOR_POLLING_REFRESH_RATE_SECS: ${COLLECTOR_POLLING_REFRESH_RATE_SECS}
+      LOG_LEVEL: ${COLLECTOR_SERVICE_LOG_LEVEL}
+      LOGGING_FORMAT: ${LOGGING_FORMAT}
+
+  postgresdb:
+    image: postgres
+    ports:
+      - 5555:5432
+    environment:
+      - POSTGRES_USER=$POSTGRES_USER
+      - POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+      - POSTGRES_DB=$POSTGRES_DB
+
+  etl_job:
+    build: etl_job
+    container_name: etl_job
+    volumes:
+      - ./etl_job/etl.py:/app/etl.py
+      - ./etl_job/cleaning_text.py:/app/cleaning_text.py
+    depends_on:
+      - mongo_canes
+      - postgresdb
+    environment:
+      - BULK_TRANSFORM_AMOUNT=$BULK_TRANSFORM_AMOUNT
+      - ETL_POLL_RATE_SEC=$ETL_POLL_RATE_SEC
+      - LOG_LEVEL=$ETL_SERVICE_LOG_LEVEL
+      - LOGGING_FORMAT=LOGGING_FORMAT
+      
+  slackbot:
+    build: slackbot
+    container_name: slackbot
+    volumes:
+      - ./slackbot/slackbot.py:/app/slackbot.py
+    depends_on:
+      - mongo_canes
+      - postgresdb
+      - etl_job
+    environment:
+      - POSTGRES_USER=$POSTGRES_USER
+      - POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+      - POSTGRES_DB=$POSTGRES_DB
+      - SLACK_WEBHOOK_URL=$SLACK_WEBHOOK_URL
+      - SLACK_POLLING_REFRESH_RATE_SECS=$SLACK_POLLING_REFRESH_RATE_SECS
+      - SLACK_BOT_IS_SIMULATION=$SLACK_BOT_IS_SIMULATION
+      - LOG_LEVEL=$SLACK_BOT_SERVICE_LOG_LEVEL
+      - LOGGING_FORMAT=LOGGING_FORMAT
